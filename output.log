@@ -1,0 +1,52 @@
+Running tests...
+═══ SPSCQueue Tests ═══
+
+[test] basic push/pop ... done
+[test] try_push when full ... (usable capacity=3) done
+[test] try_pop when empty ... done
+[test] FIFO ordering ... done
+[test] wrap-around ... done
+[test] size_approx ... done
+[test] capacity rounding ... done
+[test] threaded SPSC correctness ... done
+
+[bench] SPSC throughput (lock-free) ...
+  10000000 ops in 169.42 ms  →  59.02 Mops/s
+
+═══ Results: 24 passed, 0 failed ═══
+═══ SPMCQueue Tests ═══
+
+[test] single consumer basic push/pop ... done
+[test] broadcast to 4 consumers ... done
+[test] try_pop when empty ... done
+[test] try_push when full (slow consumer) ... (capacity=4) done
+[test] slow consumer blocks producer ... done
+[test] consumer registers mid-stream ... done
+[test] no consumers — producer never blocked ... done
+[test] threaded SPMC broadcast (4 consumers, 500K msgs) ... done
+
+[bench] SPMC 1-producer / 1-consumer throughput ...
+  10000000 ops in 594.00 ms  →  16.83 Mops/s
+[bench] SPMC 1-producer / 2-consumer throughput ...
+  10000000 ops in 816.58 ms  →  12.25 Mops/s
+[bench] SPMC 1-producer / 4-consumer throughput ...
+  10000000 ops in 1273.29 ms  →  7.85 Mops/s
+[bench] SPMC 1-producer / 8-consumer throughput ...
+  10000000 ops in 2142.15 ms  →  4.67 Mops/s
+
+═══ Results: 122 passed, 0 failed ═══
+═══ MutexQueue Tests ═══
+
+[test] basic push/pop ... done
+[test] try_push when full ... done
+[test] try_pop when empty ... done
+[test] move semantics ... done
+[test] FIFO ordering ... done
+[test] SPSC threaded ... done
+[test] MPMC threaded ... done
+[test] blocking push backpressure ... done
+
+[bench] SPSC throughput (mutex baseline) ...
+  10000000 ops in 2815.57 ms  →  3.55 Mops/s
+
+═══ Results: 21 passed, 0 failed ═══
