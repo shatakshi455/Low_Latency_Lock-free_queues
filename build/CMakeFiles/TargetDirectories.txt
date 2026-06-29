@@ -1,0 +1,6 @@
+/home/shatakshi/Desktop/self_proj/build/CMakeFiles/test_mutex_queue.dir
+/home/shatakshi/Desktop/self_proj/build/CMakeFiles/test_spsc_queue.dir
+/home/shatakshi/Desktop/self_proj/build/CMakeFiles/test_spmc_queue.dir
+/home/shatakshi/Desktop/self_proj/build/CMakeFiles/benchmark.dir
+/home/shatakshi/Desktop/self_proj/build/CMakeFiles/edit_cache.dir
+/home/shatakshi/Desktop/self_proj/build/CMakeFiles/rebuild_cache.dir
