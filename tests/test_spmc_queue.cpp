@@ -115,12 +115,15 @@ void test_slow_consumer_blocks_producer() {
         q.push(static_cast<int>(i));
     }
 
-    // Fast consumer reads everything.
+    // Fast consumer drains its own view — but this doesn't unblock the
+    // producer.  The producer remains blocked because scan_min_tail()
+    // returns the SLOW consumer's tail, which hasn't advanced and still
+    // pins the ring buffer.
     for (std::size_t i = 0; i < cap; ++i) {
         q.pop(fast);
     }
 
-    // Producer should STILL be blocked because slow hasn't read.
+    // Producer should STILL be blocked because slow's tail hasn't moved.
     CHECK(!q.try_push(999), "producer blocked by slow consumer");
 
     // Slow reads one — now producer can push one.
