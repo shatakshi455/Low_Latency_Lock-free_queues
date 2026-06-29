@@ -1,12 +1,12 @@
-/// bench/benchmark.cpp — standalone head-to-head benchmark for all queue types.
+/// bench/benchmark.cpp — standalone head-to-head benchmark: SPSC lock-free vs mutex.
 ///
-/// Sweeps message sizes (8B, 64B, 256B, 1024B) and consumer counts (1,2,4,8).
+/// Sweeps message sizes (8B, 64B, 256B).
 /// Runs 3 iterations per configuration, reports median.
 /// Emits CSV to stdout:
 ///   queue_type,msg_bytes,consumers,ops,median_mops,iter1_mops,iter2_mops,iter3_mops
 
 #include "spsc_queue.h"
-#include "spmc_queue.h"
+
 #include "mutex_queue.h"
 
 #include <algorithm>
@@ -91,54 +91,7 @@ double bench_spsc(int ops) {
     return to_mops(ops, elapsed_ms(start, end));
 }
 
-// ─── SPMC benchmark ────────────────────────────────────────────────────────
 
-template <std::size_t MsgBytes>
-double bench_spmc(int ops, int num_consumers) {
-    using P = Payload<MsgBytes>;
-    SPMCQueue<P, 4096, 8> q;
-
-    std::vector<std::size_t> ids(num_consumers);
-    for (int c = 0; c < num_consumers; ++c) {
-        ids[c] = q.register_consumer();
-    }
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    std::thread producer([&] {
-        for (int i = 0; i < ops; ++i) {
-            q.push(P(static_cast<std::uint64_t>(i)));
-        }
-    });
-
-    std::vector<std::uint64_t> sums(num_consumers, 0);
-    std::vector<std::thread> consumers;
-    for (int c = 0; c < num_consumers; ++c) {
-        consumers.emplace_back([&, c] {
-            std::uint64_t local_sum = 0;
-            for (int i = 0; i < ops; ++i) {
-                local_sum += q.pop(ids[c]).seq;
-            }
-            sums[c] = local_sum;
-        });
-    }
-
-    producer.join();
-    for (auto& t : consumers) t.join();
-
-    auto end = std::chrono::high_resolution_clock::now();
-
-    // Verify: every consumer should see the same sequence
-    std::uint64_t expected = static_cast<std::uint64_t>(ops - 1) * ops / 2;
-    for (int c = 0; c < num_consumers; ++c) {
-        if (sums[c] != expected) {
-            std::fprintf(stderr, "SPMC<%zu> consumer %d checksum mismatch!\n",
-                         MsgBytes, c);
-        }
-    }
-
-    return to_mops(ops, elapsed_ms(start, end));
-}
 
 // ─── Mutex benchmark (SPSC mode: 1P/1C) ────────────────────────────────────
 
@@ -175,64 +128,7 @@ double bench_mutex_spsc(int ops) {
     return to_mops(ops, elapsed_ms(start, end));
 }
 
-// ─── Mutex benchmark (MPMC mode: 1P/NC) ────────────────────────────────────
 
-template <std::size_t MsgBytes>
-double bench_mutex_mpmc(int ops, int num_consumers) {
-    using P = Payload<MsgBytes>;
-    MutexQueue<P, 4096> q;
-
-    std::atomic<bool> done{false};
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    std::thread producer([&] {
-        for (int i = 0; i < ops; ++i) {
-            q.push(P(static_cast<std::uint64_t>(i)));
-        }
-        done.store(true, std::memory_order_release);
-    });
-
-    std::atomic<std::uint64_t> total_sum{0};
-    std::atomic<int> total_consumed{0};
-    std::vector<std::thread> consumers;
-
-    for (int c = 0; c < num_consumers; ++c) {
-        consumers.emplace_back([&] {
-            std::uint64_t local_sum = 0;
-            while (true) {
-                auto val = q.try_pop();
-                if (val.has_value()) {
-                    local_sum += val->seq;
-                    total_consumed.fetch_add(1, std::memory_order_relaxed);
-                } else if (done.load(std::memory_order_acquire)) {
-                    // Drain remaining
-                    while (auto remaining = q.try_pop()) {
-                        local_sum += remaining->seq;
-                        total_consumed.fetch_add(1, std::memory_order_relaxed);
-                    }
-                    break;
-                } else {
-                    std::this_thread::yield();
-                }
-            }
-            total_sum.fetch_add(local_sum, std::memory_order_relaxed);
-        });
-    }
-
-    producer.join();
-    for (auto& t : consumers) t.join();
-
-    auto end = std::chrono::high_resolution_clock::now();
-
-    std::uint64_t expected = static_cast<std::uint64_t>(ops - 1) * ops / 2;
-    if (total_sum.load() != expected || total_consumed.load() != ops) {
-        std::fprintf(stderr, "Mutex-MPMC<%zu> checksum mismatch! sum=%lu expected=%lu consumed=%d\n",
-                     MsgBytes, total_sum.load(), expected, total_consumed.load());
-    }
-
-    return to_mops(ops, elapsed_ms(start, end));
-}
 
 // ─── Run a benchmark 3 times, return median ─────────────────────────────────
 
@@ -267,31 +163,15 @@ static void emit_csv_row(const char* queue_type, std::size_t msg_bytes,
 
 template <std::size_t MsgBytes>
 void run_all_for_size(int ops) {
-    const int consumer_counts[] = {1, 2, 4, 8};
-
     // SPSC — always 1 consumer
     std::fprintf(stderr, "  SPSC <%4zuB> 1C ...\n", MsgBytes);
     auto r = run_3x([&] { return bench_spsc<MsgBytes>(ops); });
     emit_csv_row("spsc_lockfree", MsgBytes, 1, ops, r);
 
-    // SPMC — sweep consumer counts
-    for (int nc : consumer_counts) {
-        std::fprintf(stderr, "  SPMC <%4zuB> %dC ...\n", MsgBytes, nc);
-        r = run_3x([&] { return bench_spmc<MsgBytes>(ops, nc); });
-        emit_csv_row("spmc_lockfree", MsgBytes, nc, ops, r);
-    }
-
     // Mutex SPSC — 1 consumer
     std::fprintf(stderr, "  Mutex-SPSC <%4zuB> 1C ...\n", MsgBytes);
     r = run_3x([&] { return bench_mutex_spsc<MsgBytes>(ops); });
     emit_csv_row("mutex_spsc", MsgBytes, 1, ops, r);
-
-    // Mutex MPMC — sweep consumer counts
-    for (int nc : consumer_counts) {
-        std::fprintf(stderr, "  Mutex-MPMC <%4zuB> %dC ...\n", MsgBytes, nc);
-        r = run_3x([&] { return bench_mutex_mpmc<MsgBytes>(ops, nc); });
-        emit_csv_row("mutex_mpmc", MsgBytes, nc, ops, r);
-    }
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

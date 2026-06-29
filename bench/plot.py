@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bench/plot.py — Generate throughput charts from bench_results.csv."""
+"""bench/plot.py — Generate throughput chart from bench_results.csv."""
 
 import csv
 import sys
@@ -32,14 +32,12 @@ def load_csv(path: Path) -> list[dict]:
     return rows
 
 
-# ─── Chart 1: Throughput vs Message Size (1 consumer) ────────────────────────
+# ─── Chart: Throughput vs Message Size (SPSC vs Mutex) ───────────────────────
 
 def plot_throughput_vs_msgsize(rows: list[dict], out_path: Path):
-    """Bar-grouped chart: throughput at 1 consumer for each queue type."""
-    # Filter to 1-consumer rows only; pick one mutex variant
+    """Line chart: throughput at 1 consumer for SPSC lock-free vs mutex."""
     queue_labels = {
         "spsc_lockfree": "SPSC (lock-free)",
-        "spmc_lockfree": "SPMC (lock-free)",
         "mutex_spsc":    "Mutex (baseline)",
     }
 
@@ -59,12 +57,10 @@ def plot_throughput_vs_msgsize(rows: list[dict], out_path: Path):
 
     colors = {
         "spsc_lockfree": "#2ecc71",
-        "spmc_lockfree": "#3498db",
         "mutex_spsc":    "#e74c3c",
     }
     markers = {
         "spsc_lockfree": "o",
-        "spmc_lockfree": "s",
         "mutex_spsc":    "^",
     }
 
@@ -78,78 +74,12 @@ def plot_throughput_vs_msgsize(rows: list[dict], out_path: Path):
 
     ax.set_xlabel("Message Size", fontsize=12)
     ax.set_ylabel("Throughput (Mops/s)", fontsize=12)
-    ax.set_title("Throughput vs Message Size  (1 consumer)", fontsize=14,
-                 fontweight="bold")
+    ax.set_title("Throughput vs Message Size  (SPSC lock-free vs Mutex)",
+                 fontsize=14, fontweight="bold")
     ax.set_xticks(x_pos)
     ax.set_xticklabels(x_labels)
     ax.legend(fontsize=11)
     ax.grid(axis="y", alpha=0.3)
-    ax.set_axisbelow(True)
-
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
-    plt.close(fig)
-    print(f"Saved: {out_path}")
-
-
-# ─── Chart 2: Throughput vs Consumer Count (64B messages) ────────────────────
-
-def plot_throughput_vs_consumers(rows: list[dict], out_path: Path):
-    """Line chart: throughput scaling with consumer count at 64B."""
-    msg_target = 64
-
-    # SPSC baseline (1 consumer only)
-    spsc_val = None
-    for r in rows:
-        if (r["queue_type"] == "spsc_lockfree" and
-                r["msg_bytes"] == msg_target and r["consumers"] == 1):
-            spsc_val = r["median_mops"]
-            break
-
-    # SPMC and Mutex-MPMC lines
-    queue_labels = {
-        "spmc_lockfree": "SPMC (lock-free)",
-        "mutex_mpmc":    "Mutex (MPMC)",
-    }
-    colors = {
-        "spmc_lockfree": "#3498db",
-        "mutex_mpmc":    "#e74c3c",
-    }
-    markers = {
-        "spmc_lockfree": "o",
-        "mutex_mpmc":    "s",
-    }
-
-    data = defaultdict(dict)
-    for r in rows:
-        if r["msg_bytes"] != msg_target:
-            continue
-        qt = r["queue_type"]
-        if qt in queue_labels:
-            data[qt][r["consumers"]] = r["median_mops"]
-
-    consumer_counts = sorted({r["consumers"] for r in rows
-                              if r["msg_bytes"] == msg_target and
-                              r["queue_type"] in queue_labels})
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    for qt, label in queue_labels.items():
-        vals = [data[qt].get(nc, 0) for nc in consumer_counts]
-        ax.plot(consumer_counts, vals, marker=markers[qt], label=label,
-                color=colors[qt], linewidth=2, markersize=8)
-
-    if spsc_val is not None:
-        ax.axhline(y=spsc_val, color="#2ecc71", linestyle="--", linewidth=1.5,
-                   label=f"SPSC baseline ({spsc_val:.1f} Mops/s)")
-
-    ax.set_xlabel("Number of Consumers", fontsize=12)
-    ax.set_ylabel("Throughput (Mops/s)", fontsize=12)
-    ax.set_title("Throughput vs Consumer Count  (64B messages)", fontsize=14,
-                 fontweight="bold")
-    ax.set_xticks(consumer_counts)
-    ax.legend(fontsize=11)
-    ax.grid(alpha=0.3)
     ax.set_axisbelow(True)
 
     fig.tight_layout()
@@ -172,7 +102,6 @@ def main():
     rows = load_csv(csv_path)
 
     plot_throughput_vs_msgsize(rows, repo / "throughput_vs_msgsize.png")
-    plot_throughput_vs_consumers(rows, repo / "throughput_vs_consumers.png")
 
     print("Done.")
 
