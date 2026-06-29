@@ -1,7 +1,0 @@
-queue_type,msg_bytes,consumers,ops,median_mops,iter1_mops,iter2_mops,iter3_mops
-spsc_lockfree,8,1,2000000,11.87,10.79,11.87,11.91
-mutex_spsc,8,1,2000000,3.47,3.47,3.85,3.41
-spsc_lockfree,64,1,2000000,7.46,7.53,7.33,7.46
-mutex_spsc,64,1,2000000,3.60,3.95,3.50,3.60
-spsc_lockfree,256,1,2000000,6.27,6.49,6.15,6.27
-mutex_spsc,256,1,2000000,3.18,3.18,3.41,3.05
